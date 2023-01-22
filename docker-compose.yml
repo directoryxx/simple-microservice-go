@@ -140,6 +140,20 @@ services:
     build:
       context: ./mail-service
       dockerfile: ./mailer-service.dockerfile
+    environment:
+      - APPLICATION_NAME=mail
+      - APPLICATION_MODE=worker
+      - DB_HOST=mongo
+      - DB_USERNAME=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=mail
+      - DB_PORT=27017
+      - MAIL_SERVER="mail-server"
+      - MAIL_USERNAME=""
+      - MAIL_PASSWORD=""
+      - MAIL_PORT="1025"
+      - KAFKA_URI=kafka:9094
+      - BYPASS_ENV_FILE=true
     networks:
       - mail-net
       - service-net

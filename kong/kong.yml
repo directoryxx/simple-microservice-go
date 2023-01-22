@@ -1,0 +1,23 @@
+ _format_version: "3.0"
+ _transform: true
+
+ services:
+ - host: auth-service
+   name: auth_service
+   port: 80
+   protocol: http
+   routes:
+   - name: auth_route_v1
+     paths:
+     - /api/v1/auth
+     strip_path: true
+
+ - host: file-service
+   name: file_service
+   port: 80
+   protocol: http
+   routes:
+   - name: file_route_v1
+     paths:
+     - /api/v1/file
+     strip_path: true
