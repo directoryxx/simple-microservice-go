@@ -17,7 +17,12 @@ down:
 	@echo "Done!"
 	
 download-source:
-
+	@echo "Download Auth Service"
+	git clone https://github.com/directoryxx/auth-service.git 
+	git checkout v1
+	@echo "Download File Service"
+	git clone https://github.com/directoryxx/file-service.git 
+	git checkout v1
 
 migrate-db:
 	@echo "Migrate Database Auth"
