@@ -1,0 +1,312 @@
+version: '3'
+
+services:
+
+  # broker-service:
+  #   build:
+  #     context: ./broker-service
+  #     dockerfile: ./broker-service.dockerfile
+  #   restart: always
+  #   ports:
+  #     - "8012:80"
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
+  #   networks:
+  #     - service-net
+  #     - broker-net
+  #     - kafka-net
+
+  # frontend-service:
+  #   build:
+  #     context: ./frontend-web
+  #     dockerfile: ./frontend-web.dockerfile
+  #   restart: always
+  #   ports:
+  #     - "8013:80"
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
+  #   networks:
+  #     - frontend-net
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: ./auth-service.dockerfile
+    restart: always
+    environment:
+      - APPLICATION_NAME=auth
+      - APPLICATION_PORT=80
+      - DB_HOST=db
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=auth
+      - DB_PORT=5432
+      - JWT_KEY=secret
+      - JWT_EXPIRE_HOUR=2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=p4ssw0rd
+      - KAFKA_URI=kafka:9094
+      - BYPASS_ENV_FILE=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # ports:
+    # - "8014:80"
+    deploy:
+      mode: replicated
+      replicas: 1
+    networks:
+      - service-net
+      - db-auth-net
+      - kafka-net
+
+  # log-service:
+  #   build:
+  #     context: ./logger-service
+  #     dockerfile: ./logger-service.dockerfile
+  #   restart: always
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   # ports:
+  #   #   - "8015:80"
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
+  #   networks:
+  #     - log-net
+  #     - db-log-net
+  #     - kafka-net
+
+  db:
+    image: postgres:12.12-bullseye
+    restart: always
+    environment:
+      - POSTGRES_DB=auth
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - '5435:5432'
+    volumes: 
+      - db:/var/lib/postgresql/data
+    networks:
+      - db-auth-net
+
+  mongo:
+    image: mongo:6.0.2-focal
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 127.0.0.1:27018:27017
+    volumes:
+      - mongodb_data_container:/data/db
+    networks:
+      - db-log-net
+
+  redis:
+    image: redis:6.2.7-bullseye
+    command: >
+          --requirepass p4ssw0rd
+    restart: always
+    ports:
+      - '127.0.0.1:6385:6379'
+    networks:
+      - db-auth-net
+
+  # redis-broker:
+  #   image: redis:6.2.7-bullseye
+  #   command: >
+  #         --requirepass p4ssw0rd
+  #   restart: always
+  #   ports:
+  #     - '127.0.0.1:6386:6379'
+  #   networks:
+  #     - broker-net
+
+  redis-file:
+    image: redis:6.2.7-bullseye
+    command: >
+          --requirepass p4ssw0rd
+    restart: always
+    ports:
+      - '127.0.0.1:6387:6379'
+    networks:
+      - file-net
+
+  mail-service:
+    restart: always
+    build:
+      context: ./mail-service
+      dockerfile: ./mailer-service.dockerfile
+    networks:
+      - mail-net
+      - service-net
+      - db-log-net
+      - kafka-net
+
+  mail-server:
+    restart: always
+    image: mailhog/mailhog
+    ports: 
+      # - 1025:1025 # smtp server
+      - 8025:8025 # web ui
+    networks:
+      - mail-net
+
+  zookeeper:
+    image: docker.io/bitnami/zookeeper:3.8
+    # ports:
+      # - "2181:2181"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "zookeeper_data:/bitnami"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    networks:
+      - kafka-net
+
+  kafka:
+    image: docker.io/bitnami/kafka:3.2
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - "kafka_data:/bitnami"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT,CLIENTUI:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=CLIENT://:9092,EXTERNAL://:9093,CLIENTUI://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=CLIENT://localhost:9092,EXTERNAL://localhost:9093,CLIENTUI://kafka:9094
+      - KAFKA_INTER_BROKER_LISTENER_NAME=CLIENT
+    depends_on:
+      - zookeeper
+    networks:
+      - kafka-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    ports:
+      - "8050:8080"
+    restart: always
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9094
+    networks:
+      - kafka-net
+  
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_storage:/data
+    environment:
+      MINIO_ROOT_USER: minioroot
+      MINIO_ROOT_PASSWORD: password2022
+    command: server --console-address ":9001" /data
+    networks:
+      - file-net
+
+  kong:
+    image: kong:3.1.1
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8443:8443"
+      - "8444:8444"
+    volumes:
+      - ./kong/:/kong/declarative/
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: "/kong/declarative/kong.yml"
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
+    networks:
+      - service-net
+
+  file-service:
+    build:
+      context: ./file-service
+      dockerfile: ./file-service.dockerfile
+    restart: always
+    environment:
+      - APPLICATION_NAME=file
+      - APPLICATION_PORT=80
+      - DB_HOST=db-file
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=file
+      - DB_PORT=5432
+      - JWT_KEY=secret
+      - JWT_EXPIRE_HOUR=2
+      - REDIS_HOST=redis-file
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=p4ssw0rd
+      - KAFKA_URI=kafka:9094
+      - BYPASS_ENV_FILE=true
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=DMUGCkFYuRGjOjo1
+      - MINIO_SECRET_KEY=imUg7qqHuwwupGRgL66Y4IN0Uyl6l8ah
+      - MINIO_BUCKET=file
+      - AUTH_SERVICE_URL="http://auth-service"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # ports:
+    # - "8014:80"
+    deploy:
+      mode: replicated
+      replicas: 1
+    networks:
+      - service-net
+      - db-file-net
+      - file-net
+      - kafka-net
+
+  db-file:
+    image: postgres:12.12-bullseye
+    restart: always
+    environment:
+      - POSTGRES_DB=file
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - '5436:5432'
+    volumes: 
+      - db-file:/var/lib/postgresql/data
+    networks:
+      - db-file-net
+
+volumes:
+  db:
+    driver: local
+  db-file:
+    driver: local
+  mongodb_data_container:
+    driver: local
+  zookeeper_data:
+    driver: local
+  kafka_data:
+    driver: local
+  minio_storage:
+    driver: local
+
+networks:
+  file-net:
+  db-file-net:
+  db-auth-net:
+  db-log-net:
+  service-net:
+  # log-net:
+  frontend-net:
+  mail-net:
+  kafka-net:
+  # broker-net:
+
