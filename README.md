@@ -1,6 +1,10 @@
 # simple-microservice-go
 
-This project's purpose is trying to implement how to microservice and practice writing rest API with Golang. So there are a lot of improvements and so far from best practices.
+This project's purpose is to try to implement how to microservices work and practice creating Rest API with Golang. So there are a lot of improvements and so far from best practices.
+
+## Version:
+1. v1 (JSON)
+2. v2 (gRPC) (TBD)
 
 ## List Services:
 1. Auth Service (https://github.com/directoryxx/auth-service Branch:v1)
